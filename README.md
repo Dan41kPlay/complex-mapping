@@ -2,8 +2,11 @@
 
 TODO: docs
 
-authors:
+# authors:
 Garnik Abgaryan (team lead)
+
 Daniel Zakirov (frontend)
+
 Darya Zubova (backend)
+
 Matvey Zharkov (backend)
