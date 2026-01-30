@@ -265,9 +265,10 @@ Python (против часовой)
         self.zetaMatrix = self.zetaMatrix.T
 
     def circles(self: Self) -> None:
-        Radii = np.linspace(0.000011, 0.0012, 10).reshape(-1, 1)
+        Radii = np.linspace(0.00000011, 0.000012, 200).reshape(-1, 1)
         theta = np.linspace(0, 2 * np.pi, self.numPoints).reshape(1, -1)
         Theta_grid, Radii_grid = np.meshgrid(theta, Radii)
         Centers = self.zeta0 + Radii
         Circles_adjusted = Centers + Radii_grid * (np.exp(1j * Theta_grid) - 1.) - Radii
         self.zetaMatrix = Circles_adjusted.T.conj()
+
