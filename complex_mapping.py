@@ -1,5 +1,5 @@
 from dataclasses import dataclass, field
-from typing import Self, Optional
+from typing import Self, Optional, Dict
 from decimal import Decimal, getcontext
 from concurrent import futures
 
@@ -86,7 +86,7 @@ class ComplexMapping:
         futures.wait(tasks)
             
     # Matvey
-    def line(self: Self, numRays: int = 500, rayLength: mp.mpf = mp.mpf('.0001')) -> None:
+    def line(self: Self, numRays: int = 50, rayLength: mp.mpf = mp.mpf('1')) -> None:
         tParam = np.linspace(0, 1, self.numPoints, dtype=mp.mpf).reshape(1, -1)
         angles = np.linspace(0, 2 * mp.pi, numRays + 1)[:-1].reshape(-1, 1).conj()
         directions = np.array([mp.e**(1j * angle) for angle in angles])
@@ -121,164 +121,171 @@ class ComplexMapping:
         num_points = 500
         t = np.linspace(-np.pi, np.pi, num_points, dtype=mp.mpf)
         a_values = np.linspace(mp.mpf('1e-8'), mp.mpf('1e-8'), 200).reshape(1, -1)
-        y, x = fresnel(t)
+        #y, x = fresnel(t)
+        f_cos = np.frompyfunc(mp.fresnelc, 1, 1)
+        f_sin = np.frompyfunc(mp.fresnels, 1, 1)
+        x = f_cos(t)
+        y = f_sin(t)
         base_spiral = (x + 1j * y).reshape(1, -1).T
         self.zetaMatrix = (base_spiral * a_values + self.zeta0).T
 
     def spirals(self: Self) -> None:
+        new_exp = np.frompyfunc(mp.exp, 1, 1)
         t_values = np.linspace(0, 8 * mp.pi, self.numPoints).reshape(1, -1)
         k_values = np.arange(mp.mpf('1e-5'), mp.mpf('6e-3') + mp.mpf('5e-7'), mp.mpf('1e-5')).reshape(-1, 1)
-        self.zetaMatrix = self.zeta0 + k_values * t_values * np.exp(1j * t_values)
+        self.zetaMatrix = self.zeta0 + k_values * t_values * new_exp(1j * t_values)
 
-    def koch(self: Self) -> None:
-        it = 6
-        angles = np.arange(0, 11, 1)
-        L = mp.mpf('1e-10')
-        z = np.linspace(0, L, self.numPoints).reshape(-1, 1)
-        for i in range(it):
-            dz = np.diff(z, axis=0)
-            p1 = z[:-1]
-            p2 = p1 + dz / 3
-            p3 = p2 + dz / 3 * np.exp(1j * np.pi / 3)
-            p4 = p1 + 2 * dz / 3
-            z_new = np.column_stack((p1, p2, p3, p4)).reshape(-1, 1)
-            z = np.concatenate([z_new, z[-1].reshape(-1, 1)])
-        self.zetaMatrix = np.zeros((max(angles.shape), max(z.shape)), dtype=mp.mpc)
-        for k in range(max(angles.shape)):
-            self.zetaMatrix[k, :] = self.zeta0 + z.T * np.exp(1j * np.deg2rad(angles[k]))
-
-    def mandelbrot(self: Self) -> None:
-        res = 1000
-        iters = 150
-        x = np.linspace(-2.1, 0.6, res)
-        y = np.linspace(-1.2, 1.2, res)
-        X, Y = np.meshgrid(x, y)
-        C = X + 1j * Y
-
-        Zcalc = np.zeros_like(C)
-        inside = np.ones_like(C, dtype=bool)
-        for n in range(iters):
-            mask = np.abs(Zcalc) <= 2
-            Zcalc[mask] = Zcalc[mask] ** 2 + C[mask]
-            inside &= np.abs(Zcalc) <= 2
-
-        #Под вопросом
-        #boundaries = sk.measure.find_contours(np.pad(inside, pad_width=1, mode='constant', constant_values=0), 0.9)
-        #boundaries = [i[np.append((np.diff(i[:,0])!=0)|(np.diff(i[:,1])!=0), True)]-1 for i in [np.round(i).astype(int) for i in boundaries]]
-        '''
-        Так как skimage возвращает точки, ноходящиеся между 0 и 1, их приходится округлять и удалять лишние чтобы повторить поведение Matlab,
-        возможно лучше использовать opencv (вероятно быстрее работает)
-        '''
-        #Под вопросом
-        inside = inside.astype(np.uint8) * 255
-        boundaries, _ = cv2.findContours(inside, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_NONE)
-        mainIdx = np.argmax([max(i.shape) for i in boundaries])
-        mainBoundary = boundaries[mainIdx].reshape(-1, 2)
-        mainBoundary = np.concatenate((mainBoundary, mainBoundary[0].reshape(-1, 2)))
-        z_edge = x[mainBoundary[:, 0]] + 1j * y[mainBoundary[:, 1]]
-
-        refIdx = np.argmax(z_edge.real)
-        #Под вопросом
-        reference_point = z_edge[refIdx]
-        '''
-        Из-за того, что массив точек mainBoundary смещён относительно матлаба (алгоритмы начинают контур из разных точек), 
-        эта точка получается другой (тк массив может содержать несколько точек с максимальным real значением, и max берёт первую точку в массиве), 
-        поэтому комплексные значения итоговой матрицы отличаются
-        Имеет ли это значение?
-Python (против часовой)
-[[False False False False False False False False False False]
- [False False False False False False False False False False]
- [False False False False False False False False False False]
- [False False False False False  True  True  True  True False]
- [False False False  True  True  True  True  True  True False]
- [False False False  True  True  True  True  True  True False]
- [False False False False False  True  True  True  True False]
- [False False False False False False False False False False]
- [False False False False False False False False False False]
- [False False False False False False False False False False]]
-[[5 3]
- [4 4]
- [3 4]
- [3 5]
- [4 5]
- [5 6]
- [6 6]
- [7 6]
- [8 6]
- [8 5]
- [8 4]
- [8 3]
- [7 3]
- [6 3]
- [5 3]]
- Matlab (по часовой)
-   0   0   0   0   0   0   0   0   0   0
-   0   0   0   0   0   0   0   0   0   0
-   0   0   0   0   0   0   0   0   0   0
-   0   0   0   0   0   1   1   1   1   0
-   0   0   0   1   1   1   1   1   1   0
-   0   0   0   1   1   1   1   1   1   0
-   0   0   0   0   0   1   1   1   1   0
-   0   0   0   0   0   0   0   0   0   0
-   0   0   0   0   0   0   0   0   0   0
-   0   0   0   0   0   0   0   0   0   0
-
-     5     4
-     5     5
-     4     6
-     4     7
-     4     8
-     4     9
-     5     9
-     6     9
-     7     9
-     7     8
-     7     7
-     7     6
-     6     5
-     6     4
-     5     4
-        '''
-        #Под вопросом
-        offset = self.zeta0 - reference_point
-        z_base = z_edge + offset
-        scales = np.arange(mp.mpf('1e-9'), mp.mpf('1e-9') + mp.mpf('5e-11') / 2, mp.mpf('5e-11'))
-        self.zetaMatrix = np.zeros((max(z_base.shape), max(scales.shape)), dtype=mp.mpc)
-        for k in range(max(scales.shape)):
-            s = scales[k]
-            self.zetaMatrix[:, k] = self.zeta0 + s * (z_base - self.zeta0)
-        self.zetaMatrix = self.zetaMatrix.T
-
-    def julia(self: Self, res: int = 100, maxIter: int = 20) -> None:
-        C_constant = mp.mpc(-0.123, 0.745)
-        x = np.linspace(-1.5, 1.5, res, dtype=mp.mpf)
-        y = np.linspace(-1.5, 1.5, res, dtype=mp.mpf)
-        X, Y = np.meshgrid(x, y)
-        Zcalc = X + 1j * Y
-        inside = np.ones_like(Zcalc, dtype=bool)
-        for n in range(maxIter):
-            mask = np.abs(Zcalc) <= 2
-            Zcalc[mask] = Zcalc[mask] ** 2 + C_constant
-            inside &= np.abs(Zcalc) <= 2
-        inside = inside.astype(np.uint8) * 255
-        boundaries, _ = cv2.findContours(inside, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_NONE)
-        mainIdx = np.argmax([max(i.shape) for i in boundaries])
-        mainBoundary = boundaries[mainIdx].reshape(-1, 2)
-        mainBoundary = np.concatenate((mainBoundary, mainBoundary[0].reshape(-1, 2)))
-        z_edge = x[mainBoundary[:, 0]] + 1j * y[mainBoundary[:, 1]]
-        refIdx = np.argmax(z_edge.real)
-        reference_point = z_edge[refIdx]
-        offset = self.zeta0 - reference_point
-        z_base = z_edge + offset
-        scales = np.arange(1e-12, 1e-11 + 1e-13 / 2, 1e-13, dtype=mp.mpf)
-        self.zetaMatrix = np.zeros((max(z_base.shape), max(scales.shape)), dtype=mp.mpc)
-        for k in range(max(scales.shape)):
-            s = scales[k]
-            self.zetaMatrix[:, k] = self.zeta0 + s * (z_base - self.zeta0)
-        self.zetaMatrix = self.zetaMatrix.T
+#     def koch(self: Self) -> None:
+#         it = 6
+#         angles = np.arange(0, 11, 1)
+#         L = mp.mpf('1e-10')
+#         z = np.linspace(0, L, self.numPoints, dtype = mp.mpf).reshape(-1, 1)
+#         new_exp = np.frompyfunc(mp.exp, 1, 1)
+#         for i in range(it):
+#             dz = np.diff(z, axis=0)
+#             p1 = z[:-1]
+#             p2 = p1 + dz / 3
+#             p3 = p2 + dz / 3 * new_exp(1j * mp.pi / 3)
+#             p4 = p1 + 2 * dz / 3
+#             z_new = np.column_stack((p1, p2, p3, p4)).reshape(-1, 1)
+#             z = np.concatenate([z_new, z[-1].reshape(-1, 1)])
+#         self.zetaMatrix = np.zeros((max(angles.shape), max(z.shape)), dtype=mp.mpc)
+#         for k in range(max(angles.shape)):
+#             self.zetaMatrix[k, :] = self.zeta0 + z.T * new_exp(1j * np.deg2rad(angles[k]))
+#
+#     def mandelbrot(self: Self) -> None:
+#         res = 1000
+#         iters = 150
+#         x = np.linspace(-2.1, 0.6, res)
+#         y = np.linspace(-1.2, 1.2, res)
+#         X, Y = np.meshgrid(x, y)
+#         C = X + 1j * Y
+#
+#         Zcalc = np.zeros_like(C)
+#         inside = np.ones_like(C, dtype=bool)
+#         for n in range(iters):
+#             mask = np.abs(Zcalc) <= 2
+#             Zcalc[mask] = Zcalc[mask] ** 2 + C[mask]
+#             inside &= np.abs(Zcalc) <= 2
+#
+#         #Под вопросом
+#         #boundaries = sk.measure.find_contours(np.pad(inside, pad_width=1, mode='constant', constant_values=0), 0.9)
+#         #boundaries = [i[np.append((np.diff(i[:,0])!=0)|(np.diff(i[:,1])!=0), True)]-1 for i in [np.round(i).astype(int) for i in boundaries]]
+#         '''
+#         Так как skimage возвращает точки, ноходящиеся между 0 и 1, их приходится округлять и удалять лишние чтобы повторить поведение Matlab,
+#         возможно лучше использовать opencv (вероятно быстрее работает)
+#         '''
+#         #Под вопросом
+#         inside = inside.astype(np.uint8) * 255
+#         boundaries, _ = cv2.findContours(inside, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_NONE)
+#         mainIdx = np.argmax([max(i.shape) for i in boundaries])
+#         mainBoundary = boundaries[mainIdx].reshape(-1, 2)
+#         mainBoundary = np.concatenate((mainBoundary, mainBoundary[0].reshape(-1, 2)))
+#         z_edge = x[mainBoundary[:, 0]] + 1j * y[mainBoundary[:, 1]]
+#
+#         refIdx = np.argmax(z_edge.real)
+#         #Под вопросом
+#         reference_point = z_edge[refIdx]
+#         '''
+#         Из-за того, что массив точек mainBoundary смещён относительно матлаба (алгоритмы начинают контур из разных точек),
+#         эта точка получается другой (тк массив может содержать несколько точек с максимальным real значением, и max берёт первую точку в массиве),
+#         поэтому комплексные значения итоговой матрицы отличаются
+#         Имеет ли это значение?
+# Python (против часовой)
+# [[False False False False False False False False False False]
+#  [False False False False False False False False False False]
+#  [False False False False False False False False False False]
+#  [False False False False False  True  True  True  True False]
+#  [False False False  True  True  True  True  True  True False]
+#  [False False False  True  True  True  True  True  True False]
+#  [False False False False False  True  True  True  True False]
+#  [False False False False False False False False False False]
+#  [False False False False False False False False False False]
+#  [False False False False False False False False False False]]
+# [[5 3]
+#  [4 4]
+#  [3 4]
+#  [3 5]
+#  [4 5]
+#  [5 6]
+#  [6 6]
+#  [7 6]
+#  [8 6]
+#  [8 5]
+#  [8 4]
+#  [8 3]
+#  [7 3]
+#  [6 3]
+#  [5 3]]
+#  Matlab (по часовой)
+#    0   0   0   0   0   0   0   0   0   0
+#    0   0   0   0   0   0   0   0   0   0
+#    0   0   0   0   0   0   0   0   0   0
+#    0   0   0   0   0   1   1   1   1   0
+#    0   0   0   1   1   1   1   1   1   0
+#    0   0   0   1   1   1   1   1   1   0
+#    0   0   0   0   0   1   1   1   1   0
+#    0   0   0   0   0   0   0   0   0   0
+#    0   0   0   0   0   0   0   0   0   0
+#    0   0   0   0   0   0   0   0   0   0
+#
+#      5     4
+#      5     5
+#      4     6
+#      4     7
+#      4     8
+#      4     9
+#      5     9
+#      6     9
+#      7     9
+#      7     8
+#      7     7
+#      7     6
+#      6     5
+#      6     4
+#      5     4
+#         '''
+#         #Под вопросом
+#         offset = self.zeta0 - reference_point
+#         z_base = z_edge + offset
+#         scales = np.arange(mp.mpf('1e-9'), mp.mpf('1e-9') + mp.mpf('5e-11') / 2, mp.mpf('5e-11'))
+#         self.zetaMatrix = np.zeros((max(z_base.shape), max(scales.shape)), dtype=mp.mpc)
+#         for k in range(max(scales.shape)):
+#             s = scales[k]
+#             self.zetaMatrix[:, k] = self.zeta0 + s * (z_base - self.zeta0)
+#         self.zetaMatrix = self.zetaMatrix.T
+#
+#     def julia(self: Self, res: int = 100, maxIter: int = 20) -> None:
+#         C_constant = mp.mpc(-0.123, 0.745)
+#         x = np.linspace(-1.5, 1.5, res, dtype=mp.mpf)
+#         y = np.linspace(-1.5, 1.5, res, dtype=mp.mpf)
+#         X, Y = np.meshgrid(x, y)
+#         Zcalc = X + 1j * Y
+#         inside = np.ones_like(Zcalc, dtype=bool)
+#         for n in range(maxIter):
+#             mask = np.abs(Zcalc) <= 2
+#             Zcalc[mask] = Zcalc[mask] ** 2 + C_constant
+#             inside &= np.abs(Zcalc) <= 2
+#         inside = inside.astype(np.uint8) * 255
+#         boundaries, _ = cv2.findContours(inside, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_NONE)
+#         mainIdx = np.argmax([max(i.shape) for i in boundaries])
+#         mainBoundary = boundaries[mainIdx].reshape(-1, 2)
+#         mainBoundary = np.concatenate((mainBoundary, mainBoundary[0].reshape(-1, 2)))
+#         z_edge = x[mainBoundary[:, 0]] + 1j * y[mainBoundary[:, 1]]
+#         get_real_ufunc = np.frompyfunc(lambda x: x.real, 1, 1)
+#         refIdx = np.argmax(get_real_ufunc(z_edge))
+#         reference_point = z_edge[refIdx]
+#         offset = self.zeta0 - reference_point
+#         z_base = z_edge + offset
+#         scales = np.arange(1e-12, 1e-11 + 1e-13 / 2, 1e-13, dtype=mp.mpf)
+#         self.zetaMatrix = np.zeros((max(z_base.shape), max(scales.shape)), dtype=mp.mpc)
+#         for k in range(max(scales.shape)):
+#             s = scales[k]
+#             self.zetaMatrix[:, k] = self.zeta0 + s * (z_base - self.zeta0)
+#         self.zetaMatrix = self.zetaMatrix.T
 
     def circles(self: Self) -> None:
-        radii = np.linspace(0.000011, 0.0012, 10).reshape(-1, 1)
+        radii = np.linspace(0.00000011, 0.000012, 200).reshape(-1, 1)
         theta = np.linspace(0, 2 * np.pi, self.numPoints).reshape(1, -1)
         theta_grid, radii_grid = np.meshgrid(theta, radii)
         centers = self.zeta0 + radii
@@ -336,8 +343,8 @@ Python (против часовой)
         ax.grid(True)
         ax.set_xlabel(labels.get('X', ''), fontsize=15)
         ax.set_ylabel(labels.get('Y', ''), fontsize=15)
-        ax.xaxis.set_major_formatter(plt.FormatStrFormatter('%.12f'))
-        ax.yaxis.set_major_formatter(plt.FormatStrFormatter('%.12f'))
+        ax.xaxis.set_major_formatter(plt.FormatStrFormatter('%.3f'))
+        ax.yaxis.set_major_formatter(plt.FormatStrFormatter('%.3f'))
         
         ax.set_xlabel(labels.get('X', ''), fontsize=20)
         ax.set_ylabel(labels.get('Y', ''), fontsize=20)
@@ -365,18 +372,24 @@ Python (против часовой)
 
 
 def main():
-    cm = ComplexMapping(1, 3)
+    cm = ComplexMapping(1, 500)
     
     # Set parameters
-    cm.zeta0 = mp.mpc(1, 2)
-    cm.kappa0 = mp.mpf('.5')
+    cm.zeta0 = mp.mpc(1.5, 0.8)
+    cm.kappa0 = mp.mpc(2, 0.5)
     
-    cm.line()
-    print('line done')
+    #cm.line()
+    #cm.zetaMatrix = 1/cm.zetaMatrix
+    #cm.parabolas()
+    cm.circles()
+    print('done')
     cm.calcKappa()
     print('calc kappa done')
     #cm.julia()
-    
+    print(cm.zetaMatrix[1, :])
+    print(cm.zetaMatrix.shape)
+    print(cm.kappaMatrix[1, :])
+    print(cm.kappaMatrix.shape)
     cm.plot_gradient(cm.zetaMatrix, draw_arrows=True, labels={'X': 'Real', 'Y': 'Imag'})
     #cm.discrepancy()
 
