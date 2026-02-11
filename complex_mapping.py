@@ -1,8 +1,11 @@
 from dataclasses import dataclass, field
 from typing import Self, Optional, Dict
 from decimal import Decimal, getcontext
-from concurrent import futures
+#from concurrent import futures
+#import multiprocessing.dummy as mpd
+#from threading import Thread
 
+from tqdm import tqdm
 import cv2
 import matplotlib.pyplot as plt
 import numpy as np
@@ -10,7 +13,7 @@ import mpmath as mp
 #import skimage as sk
 from scipy.special import fresnel
 
-mp.mp.dps = 24
+mp.mp.dps = 12
 
 @dataclass
 class ComplexMapping:
@@ -38,7 +41,7 @@ class ComplexMapping:
             result.append(float(mp.fabs(val)))
         return np.array(result).reshape(zetas.shape)
 
-    def dKappa_dZeta(self: Self, zeta: mp.mpc, kappa: mp.mpf) -> mp.mpc:
+    def _old_dKappa_dZeta(self: Self, zeta: mp.mpc, kappa: mp.mpf) -> mp.mpc:
         n = self.num
         
         JnKappaZeta =  mp.besselj(n,     kappa * zeta)
@@ -60,6 +63,30 @@ class ComplexMapping:
             (zeta * dH1n_dKappa * Jn1KappaZeta + zeta * H1nKappa * dJn1_dKappa)
         return -dDeltaZeta / dDeltaKappa
 
+    def dKappa_dZeta(self, zeta, kappa):
+        n = self.num
+        kz = kappa * zeta
+
+        # Only four special function calls are needed
+        Jn  = mp.besselj(n,     kz)
+        Jn1 = mp.besselj(n + 1, kz)
+        Hn  = mp.hankel1(n,     kappa)
+        Hn1 = mp.hankel1(n + 1, kappa)
+
+        # ----- derivatives with respect to zeta -----
+        dJn_dZeta  = n / zeta * Jn - kappa * Jn1          # dJ_n/dzeta
+        dJn1_dZeta = kappa * Jn - (n + 1) / zeta * Jn1   # dJ_{n+1}/dzeta
+        dDeltaZeta = dJn_dZeta * Hn1 - Hn * (Jn1 + zeta * dJn1_dZeta)
+
+        # ----- Delta itself (useful for dDeltaKappa) -----
+        Delta = Jn * Hn1 - zeta * Hn * Jn1
+
+        # ----- derivative with respect to kappa -----
+        # Simplified using recurrence and algebra:
+        dDeltaKappa = (1 - zeta**2) * Hn * Jn - Delta / kappa
+        
+        return -dDeltaZeta / dDeltaKappa
+
     def kappaSolution(self: Self, col: int) -> np.ndarray:
         kappaSol = np.zeros(self.rows, dtype=mp.mpf)
         zetaSpan = self.zetaMatrix[col, :]
@@ -73,17 +100,36 @@ class ComplexMapping:
             k3 = h * self.dKappa_dZeta(currentZeta + h / 2, currentKappa + k2 / 2)
             k4 = h * self.dKappa_dZeta(currentZeta + h,     currentKappa + k3)
             kappaSol[i+1] = currentKappa + mp.mpf(1) / 6 * (k1 + 2 * k2 + 2 * k3 + k4)
+            #print(f'{col=}\trow={i} done')
         return kappaSol
 
     def calcKappa(self: Self) -> None:
         def acalcKappaCol(col):
             self.kappaMatrix[col, :] = self.kappaSolution(col)
+            #print(f'{col=} done')
             
         shape = self.cols, self.rows = self.zetaMatrix.shape
         self.kappaMatrix = np.zeros(shape, dtype=mp.mpf)
-        executor = futures.ProcessPoolExecutor(10)
+        print(self.cols)
+        '''ts = [Thread(target=acalcKappaCol, args=(col,)) for col in range(self.cols)]
+        for t in ts:
+            t.start()
+        #for t in ts:
+            t.join()'''
+        
+        for col in tqdm(range(self.cols)):
+            '''t = Thread(target=acalcKappaCol, args=(col,))
+            t.start()
+            t.join()'''
+            acalcKappaCol(col)
+        '''p = mpd.Pool()
+        p.map(acalcKappaCol, range(self.cols))
+        p.close()
+        p.join()'''
+        
+        '''executor = futures.ProcessPoolExecutor(10)
         tasks = [executor.submit(acalcKappaCol, col) for col in range(self.cols)]
-        futures.wait(tasks)
+        futures.wait(tasks)'''
             
     # Matvey
     def line(self: Self, numRays: int = 50, rayLength: mp.mpf = mp.mpf('1')) -> None:
@@ -392,6 +438,7 @@ def main():
     print(cm.kappaMatrix.shape)
     cm.plot_gradient(cm.zetaMatrix, draw_arrows=True, labels={'X': 'Real', 'Y': 'Imag'})
     #cm.discrepancy()
+    input()
 
 if __name__ == '__main__':
     main()
