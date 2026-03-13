@@ -5,7 +5,7 @@ from decimal import Decimal, getcontext
 #import multiprocessing.dummy as mpd
 #from threading import Thread
 
-from tqdm import tqdm
+#from tqdm import tqdm
 import cv2
 import matplotlib.pyplot as plt
 import numpy as np
@@ -116,7 +116,7 @@ class ComplexMapping:
             t.start()
         #for t in ts:
             t.join()'''
-        
+
         for col in tqdm(range(self.cols)):
             '''t = Thread(target=acalcKappaCol, args=(col,))
             t.start()
@@ -330,8 +330,8 @@ class ComplexMapping:
 #             self.zetaMatrix[:, k] = self.zeta0 + s * (z_base - self.zeta0)
 #         self.zetaMatrix = self.zetaMatrix.T
 
-    def circles(self: Self) -> None:
-        radii = np.linspace(0.00000011, 0.000012, 200).reshape(-1, 1)
+    def circles(self: Self, max_rad: float, circl_num: int, shift: int) -> None:
+        radii = np.linspace(0.00000011, max_rad, circl_num).reshape(-1, 1)
         theta = np.linspace(0, 2 * np.pi, self.numPoints).reshape(1, -1)
         theta_grid, radii_grid = np.meshgrid(theta, radii)
         centers = self.zeta0 + radii
@@ -394,8 +394,8 @@ class ComplexMapping:
         
         ax.set_xlabel(labels.get('X', ''), fontsize=20)
         ax.set_ylabel(labels.get('Y', ''), fontsize=20)
-        
         plt.show()
+        return fig
     
     def discrepancy(self: Self) -> None:
         """Plot the discrepancy function."""
@@ -421,21 +421,21 @@ def main():
     cm = ComplexMapping(1, 500)
     
     # Set parameters
-    cm.zeta0 = mp.mpc(1.5, 0.8)
+    cm.zeta0 = mp.mpc(1.0, 5.0)
     cm.kappa0 = mp.mpc(2, 0.5)
     
     #cm.line()
     #cm.zetaMatrix = 1/cm.zetaMatrix
     #cm.parabolas()
-    cm.circles()
+    cm.circles(1, 12, 0)
     print('done')
-    cm.calcKappa()
+    #cm.calcKappa()
     print('calc kappa done')
     #cm.julia()
-    print(cm.zetaMatrix[1, :])
-    print(cm.zetaMatrix.shape)
-    print(cm.kappaMatrix[1, :])
-    print(cm.kappaMatrix.shape)
+    #print(cm.zetaMatrix[1, :])
+    #print(cm.zetaMatrix.shape)
+    #print(cm.kappaMatrix[1, :])
+    #print(cm.kappaMatrix.shape)
     cm.plot_gradient(cm.zetaMatrix, draw_arrows=True, labels={'X': 'Real', 'Y': 'Imag'})
     #cm.discrepancy()
     input()
