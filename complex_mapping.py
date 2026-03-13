@@ -5,7 +5,7 @@ from decimal import Decimal, getcontext
 #import multiprocessing.dummy as mpd
 #from threading import Thread
 
-#from tqdm import tqdm
+from tqdm import tqdm
 import cv2
 import matplotlib.pyplot as plt
 import numpy as np
@@ -330,8 +330,8 @@ class ComplexMapping:
 #             self.zetaMatrix[:, k] = self.zeta0 + s * (z_base - self.zeta0)
 #         self.zetaMatrix = self.zetaMatrix.T
 
-    def circles(self: Self, max_rad: float, circl_num: int, shift: int) -> None:
-        radii = np.linspace(0.00000011, max_rad, circl_num).reshape(-1, 1)
+    def circles(self: Self, max_rad: float, circle_num: int, shift: int) -> None:
+        radii = np.linspace(0.00000011, max_rad, circle_num).reshape(-1, 1)
         theta = np.linspace(0, 2 * np.pi, self.numPoints).reshape(1, -1)
         theta_grid, radii_grid = np.meshgrid(theta, radii)
         centers = self.zeta0 + radii
