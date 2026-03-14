@@ -7,6 +7,6 @@ Garnik Abgaryan (team lead)
 
 Daniel Zakirov (frontend)
 
-Darya Zubova (backend)
+Darya Zubova (documentation)
 
 Matvey Zharkov (backend)
