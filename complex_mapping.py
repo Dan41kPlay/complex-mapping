@@ -138,21 +138,20 @@ class ComplexMapping:
         directions = np.array([mp.e**(1j * angle) for angle in angles])
         self.zetaMatrix = (self.zeta0 + rayLength * directions * tParam).conj().T
 
-    def parabolas(self: Self) -> None:
+    def parabolas(self, c, C_end, n_start, n_end, n_step,
+                  num_points_curved=1000, num_points_linear=1000):
         a = self.zeta0.real
         b = self.zeta0.imag
-        c = mp.mpf('-.8')
-        C = mp.mpf('.5')
-        n_values = np.arange(2, 13, 1, dtype=mp.mpf)
+        n_values = np.arange(n_start, n_end + n_step, n_step, dtype=mp.mpf)
 
-        num_points_curved = 1000
-        num_points_linear = 1000
         t1 = np.linspace(a, c, num_points_curved)
-        t2 = np.linspace(c, C, num_points_linear + 1)[1:]
+        t2 = np.linspace(c, C_end, num_points_linear + 1)[1:]  # без дублирования c
 
-        self.zetaMatrix = np.zeros((max(t1.shape) + max(t2.shape), max(n_values.shape)), dtype=mp.mpc)
+        rows = t1.shape[0] + t2.shape[0]
+        cols = n_values.shape[0]
+        self.zetaMatrix = np.zeros((rows, cols), dtype=mp.mpc)
 
-        for k in range(max(n_values.shape)):
+        for k in range(cols):
             n = n_values[k]
             zeta_curved = t1 + 1j * b * ((t1 - c) / (a - c)) ** n
             zeta_linear = t2 + 0j
